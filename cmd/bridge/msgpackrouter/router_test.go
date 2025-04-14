@@ -104,6 +104,13 @@ func TestBasicRouterFunctionality(t *testing.T) {
 		require.NoError(t, err)
 	}
 	{
+		// Self-call from client1
+		result, reqErr, err := cl1.SendRequest(context.Background(), "ping", []any{"c", int16(12), false})
+		require.Equal(t, []any{"c", int16(12), false}, result)
+		require.Nil(t, reqErr)
+		require.NoError(t, err)
+	}
+	{
 		// Call from client2 an un-registered method
 		result, reqErr, err := cl2.SendRequest(context.Background(), "not-existent-method", []any{"1", int16(2), true})
 		require.Nil(t, result)
@@ -120,6 +127,12 @@ func TestBasicRouterFunctionality(t *testing.T) {
 		err := cl2.SendNotification("notexistent", []any{"a", int16(4), false})
 		require.NoError(t, err)
 	}
+	{
+		// Self-send notification
+		err := cl1.SendNotification("ping", []any{"b", int16(14), true, true})
+		require.NoError(t, err)
+	}
 	time.Sleep(100 * time.Millisecond) // Give some time for the notifications to be processed
 	require.Contains(t, cl1Notifications.String(), "notification: ping [a 4 false]")
+	require.Contains(t, cl1Notifications.String(), "notification: ping [b 14 true true]")
 }

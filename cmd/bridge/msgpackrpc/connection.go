@@ -172,7 +172,7 @@ func (c *Connection) handleIncomingRequest(id MessageID, method string, params [
 	logger := c.logger.LogIncomingRequest(id, method, params)
 	c.loggerMutex.Unlock()
 
-	c.requestHandler(ctx, logger, method, params, func(reqResult any, reqError any) {
+	go c.requestHandler(ctx, logger, method, params, func(reqResult any, reqError any) {
 		c.activeInRequestsMutex.Lock()
 		c.activeInRequests[id].cancel()
 		delete(c.activeInRequests, id)
@@ -209,7 +209,7 @@ func (c *Connection) handleIncomingNotification(method string, params []any) {
 	logger := c.logger.LogIncomingNotification(method, params)
 	c.loggerMutex.Unlock()
 
-	c.notificationHandler(logger, method, params)
+	go c.notificationHandler(logger, method, params)
 }
 
 func (c *Connection) handleIncomingResponse(id MessageID, reqError any, reqResult any) {
