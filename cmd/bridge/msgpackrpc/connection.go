@@ -256,15 +256,19 @@ func (c *Connection) SendRequest(ctx context.Context, method string, params []an
 	c.loggerMutex.Unlock()
 
 	resultChan := make(chan *outResponse, 1)
-	if err := c.send([]any{messageTypeRequest, id, method, params}); err != nil {
-		return nil, nil, fmt.Errorf("sending request: %w", err)
-	}
 	c.activeOutRequestsMutex.Lock()
 	c.activeOutRequests[id] = &outRequest{
 		resultChan: resultChan,
 		method:     method,
 	}
 	c.activeOutRequestsMutex.Unlock()
+
+	if err := c.send([]any{messageTypeRequest, id, method, params}); err != nil {
+		c.activeOutRequestsMutex.Lock()
+		delete(c.activeOutRequests, id)
+		c.activeOutRequestsMutex.Unlock()
+		return nil, nil, fmt.Errorf("sending request: %w", err)
+	}
 
 	// Wait the response or send cancel request if requested from context
 	var result *outResponse
