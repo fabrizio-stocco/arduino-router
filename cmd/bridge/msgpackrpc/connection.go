@@ -82,30 +82,29 @@ func (c *Connection) SetLogger(l Logger) {
 func (c *Connection) Run() {
 	in := msgpack.NewDecoder(c.in)
 	for {
-		if err := c.processIncomingMessage(in); err != nil {
+		var data []any
+		start := time.Now()
+		if v, err := in.DecodeInterface(); err != nil {
+			c.errorHandler(fmt.Errorf("can't read packet: %w", err))
+			return // unrecoverable
+		} else if s, ok := v.([]any); !ok {
+			c.errorHandler(fmt.Errorf("invalid packet, expected array, got: %T", v))
+			continue // ignore invalid packets
+		} else {
+			data = s
+		}
+		elapsed := time.Since(start)
+		c.loggerMutex.Lock()
+		c.logger.LogIncomingDataDelay(elapsed)
+		c.loggerMutex.Unlock()
+
+		if err := c.processIncomingMessage(data); err != nil {
 			c.errorHandler(err)
-			c.Close()
-			return
 		}
 	}
 }
 
-func (c *Connection) processIncomingMessage(in *msgpack.Decoder) error {
-	start := time.Now()
-
-	data, err := in.DecodeSlice()
-	if err == io.EOF {
-		return err
-	}
-	if err != nil {
-		return fmt.Errorf("invalid packet, expected array: %w", err)
-	}
-
-	elapsed := time.Since(start)
-	c.loggerMutex.Lock()
-	c.logger.LogIncomingDataDelay(elapsed)
-	c.loggerMutex.Unlock()
-
+func (c *Connection) processIncomingMessage(data []any) error {
 	if len(data) < 3 {
 		return fmt.Errorf("invalid packet, expected array with at least 3 elements")
 	}
