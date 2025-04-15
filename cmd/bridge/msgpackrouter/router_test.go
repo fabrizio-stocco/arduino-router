@@ -51,12 +51,12 @@ func TestBasicRouterFunctionality(t *testing.T) {
 	ch2a, ch2b := newFullPipe()
 
 	cl1Notifications := bytes.NewBuffer(nil)
-	cl1 := msgpackrpc.NewConnection(ch1a, ch1a, func(ctx context.Context, logger msgpackrpc.FunctionLogger, method string, params []any, respCallback func(result any, err any)) {
+	cl1 := msgpackrpc.NewConnection(ch1a, ch1a, func(ctx context.Context, logger msgpackrpc.FunctionLogger, method string, params []any) (_result any, _err any) {
 		switch method {
 		case "ping":
-			respCallback(params, nil)
+			return params, nil
 		default:
-			respCallback(nil, "unknown method: "+method)
+			return nil, "unknown method: " + method
 		}
 	}, func(logger msgpackrpc.FunctionLogger, method string, params []any) {
 		fmt.Fprintf(cl1Notifications, "notification: %s %+v\n", method, params)
@@ -64,8 +64,8 @@ func TestBasicRouterFunctionality(t *testing.T) {
 	})
 	go cl1.Run()
 
-	cl2 := msgpackrpc.NewConnection(ch2a, ch2a, func(ctx context.Context, logger msgpackrpc.FunctionLogger, method string, params []any, respCallback func(result any, err any)) {
-		respCallback(nil, nil)
+	cl2 := msgpackrpc.NewConnection(ch2a, ch2a, func(ctx context.Context, logger msgpackrpc.FunctionLogger, method string, params []any) (result any, err any) {
+		return nil, nil
 	}, func(logger msgpackrpc.FunctionLogger, method string, params []any) {
 	}, func(err error) {
 	})

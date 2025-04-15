@@ -31,40 +31,37 @@ func (r *Router) connectionLoop(conn io.ReadWriteCloser) {
 
 	var msgpackconn *msgpackrpc.Connection
 	msgpackconn = msgpackrpc.NewConnection(conn, conn,
-		func(ctx context.Context, _ msgpackrpc.FunctionLogger, method string, params []any, respCallback func(result any, err any)) {
+		func(ctx context.Context, _ msgpackrpc.FunctionLogger, method string, params []any) (_result any, _err any) {
 			// This handler is called when a request is received from the client
 
 			// Check if the client is trying to register a new method
 			if method == "$/register" {
 				if len(params) != 1 {
-					respCallback(nil, fmt.Sprintf("invalid params: only one param is expected, got %d", len(params)))
+					return nil, fmt.Sprintf("invalid params: only one param is expected, got %d", len(params))
 				} else if methodToRegister, ok := params[0].(string); !ok {
-					respCallback(nil, fmt.Sprintf("invalid params: expected string, got %T", params[0]))
+					return nil, fmt.Sprintf("invalid params: expected string, got %T", params[0])
 				} else if err := r.registerMethod(methodToRegister, msgpackconn); err != nil {
-					respCallback(nil, err.Error())
+					return nil, err.Error()
 				} else {
-					respCallback(nil, nil)
+					return nil, nil
 				}
-				return
 			}
 
 			// Check if the method is registered
 			client, ok := r.getConnectionForMethod(method)
 			if !ok {
-				respCallback(nil, fmt.Sprintf("method %s not available", method))
-				return
+				return nil, fmt.Sprintf("method %s not available", method)
 			}
 
 			// Forward the call to the registered client
 			reqResult, reqError, err := client.SendRequest(ctx, method, params)
 			if err != nil {
 				slog.Error("Failed to send request", "method", method, "err", err)
-				respCallback(nil, fmt.Sprintf("failed to send request: %s", err))
-				return
+				return nil, fmt.Sprintf("failed to send request: %s", err)
 			}
 
 			// Send the response back to the original caller
-			respCallback(reqResult, reqError)
+			return reqResult, reqError
 		},
 		func(_ msgpackrpc.FunctionLogger, method string, params []any) {
 			// This handler is called when a notification is received from the client

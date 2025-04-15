@@ -21,8 +21,8 @@ const (
 
 // Connection is a MessagePack-RPC connection
 type Connection struct {
-	in                  io.Reader
-	out                 io.Writer
+	in                  io.ReadCloser
+	out                 io.WriteCloser
 	outMutex            sync.Mutex
 	errorHandler        func(error)
 	requestHandler      RequestHandler
@@ -53,13 +53,13 @@ type outResponse struct {
 }
 
 // RequestHandler handles requests from a MessagePack-RPC Connection.
-type RequestHandler func(ctx context.Context, logger FunctionLogger, method string, params []any, respCallback func(result any, err any))
+type RequestHandler func(ctx context.Context, logger FunctionLogger, method string, params []any) (result any, err any)
 
 // NotificationHandler handles notifications from a MessagePack-RPC Connection.
 type NotificationHandler func(logger FunctionLogger, method string, params []any)
 
 // NewConnection starts a new
-func NewConnection(in io.Reader, out io.Writer, requestHandler RequestHandler, notificationHandler NotificationHandler, errorHandler func(error)) *Connection {
+func NewConnection(in io.ReadCloser, out io.WriteCloser, requestHandler RequestHandler, notificationHandler NotificationHandler, errorHandler func(error)) *Connection {
 	conn := &Connection{
 		in:                  in,
 		out:                 out,
@@ -172,7 +172,9 @@ func (c *Connection) handleIncomingRequest(id MessageID, method string, params [
 	logger := c.logger.LogIncomingRequest(id, method, params)
 	c.loggerMutex.Unlock()
 
-	go c.requestHandler(ctx, logger, method, params, func(reqResult any, reqError any) {
+	go func() {
+		reqResult, reqError := c.requestHandler(ctx, logger, method, params)
+
 		c.activeInRequestsMutex.Lock()
 		c.activeInRequests[id].cancel()
 		delete(c.activeInRequests, id)
@@ -186,7 +188,7 @@ func (c *Connection) handleIncomingRequest(id MessageID, method string, params [
 			c.errorHandler(fmt.Errorf("error sending response: %w", err))
 			c.Close()
 		}
-	})
+	}()
 }
 
 func (c *Connection) handleIncomingNotification(method string, params []any) {
@@ -222,7 +224,6 @@ func (c *Connection) handleIncomingResponse(id MessageID, reqError any, reqResul
 
 	if !ok {
 		c.errorHandler(fmt.Errorf("invalid ID in request response '%v': double answer or request not sent", id))
-		c.Close()
 		return
 	}
 
@@ -245,7 +246,8 @@ func (c *Connection) cancelIncomingRequest(id MessageID) {
 }
 
 func (c *Connection) Close() {
-	// TODO: cancel all pending requests
+	_ = c.in.Close()
+	_ = c.out.Close()
 }
 
 func (c *Connection) SendRequest(ctx context.Context, method string, params []any) (reqResult any, reqError any, err error) {
