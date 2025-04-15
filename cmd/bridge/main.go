@@ -6,13 +6,15 @@ import (
 
 	"github.com/bcmi-labs/arduino-iot-cloud-data-pipeline/pkg/config"
 	"github.com/arduino/bridge/msgpackrouter"
+	"go.bug.st/serial"
 )
 
 func main() {
 	// Server configuration
 	type Config struct {
-		LogLevel   slog.Level `default:"debug"`
-		ListenAddr string     `default:":8900"`
+		LogLevel       slog.Level `default:"debug"`
+		ListenAddr     string     `default:":8900"`
+		SerialPortAddr string     `default:"/dev/ttyACM0"`
 	}
 	var cfg Config
 	err := config.New().WithParser(config.EnvParser()).Parse(&cfg)
@@ -28,7 +30,21 @@ func main() {
 	slog.Info("Listening for RPC services", "addr", cfg.ListenAddr)
 	defer l.Close()
 
+	// Open serial port
+	serialPort, err := serial.Open(cfg.SerialPortAddr, &serial.Mode{
+		BaudRate: 115200,
+		DataBits: 8,
+		StopBits: serial.OneStopBit,
+		Parity:   serial.NoParity,
+	})
+	if err != nil {
+		panic(err)
+	}
+	slog.Info("Opened serial connection", "serial", cfg.SerialPortAddr)
+
+	// Run router
 	router := msgpackrouter.New()
+	router.Accept(serialPort)
 	for {
 		conn, err := l.Accept()
 		if err != nil {
