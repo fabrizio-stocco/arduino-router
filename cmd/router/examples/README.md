@@ -1,8 +1,8 @@
 The examples here shows how an RPC communication should work.
 
-* `ping_server` is a MsgPack RPC server that answers to the `ping` method. It connects to the MsgPack RPC Router and registers the `"ping"` method, so other client can use it.
-* `ping_client` is a MsgPack RPC client that sends a `ping` request and prints the response. It connects to the MsgPack RPC Router to send the request.
-* `msgpackdump` is a MsgPack debug tool. It reads a MsgPack stream from the file path given as argument and prints the decoded stream to stdout as ASCII strings.
+- `ping_server` is a MsgPack RPC server that answers to the `ping` method. It connects to the MsgPack RPC Router and registers the `"ping"` method, so other client can use it.
+- `ping_client` is a MsgPack RPC client that sends a `ping` request and prints the response. It connects to the MsgPack RPC Router to send the request.
+- `msgpackdump` is a MsgPack debug tool. It reads a MsgPack stream from the file path given as argument and prints the decoded stream to stdout as ASCII strings.
 
 To test the examples above, for the current directory:
 
