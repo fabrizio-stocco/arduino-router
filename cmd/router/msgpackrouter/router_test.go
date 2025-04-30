@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"testing"
 	"time"
 
@@ -50,7 +51,9 @@ func TestBasicRouterFunctionality(t *testing.T) {
 	ch1a, ch1b := newFullPipe()
 	ch2a, ch2b := newFullPipe()
 
+	cl1NotificationsMux := sync.Mutex{}
 	cl1Notifications := bytes.NewBuffer(nil)
+
 	cl1 := msgpackrpc.NewConnection(ch1a, ch1a, func(ctx context.Context, logger msgpackrpc.FunctionLogger, method string, params []any) (_result any, _err any) {
 		switch method {
 		case "ping":
@@ -59,7 +62,9 @@ func TestBasicRouterFunctionality(t *testing.T) {
 			return nil, "unknown method: " + method
 		}
 	}, func(logger msgpackrpc.FunctionLogger, method string, params []any) {
+		cl1NotificationsMux.Lock()
 		fmt.Fprintf(cl1Notifications, "notification: %s %+v\n", method, params)
+		cl1NotificationsMux.Unlock()
 	}, func(err error) {
 	})
 	go cl1.Run()
@@ -133,6 +138,9 @@ func TestBasicRouterFunctionality(t *testing.T) {
 		require.NoError(t, err)
 	}
 	time.Sleep(100 * time.Millisecond) // Give some time for the notifications to be processed
+
+	cl1NotificationsMux.Lock()
 	require.Contains(t, cl1Notifications.String(), "notification: ping [a 4 false]")
 	require.Contains(t, cl1Notifications.String(), "notification: ping [b 14 true true]")
+	cl1NotificationsMux.Unlock()
 }
