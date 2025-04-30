@@ -7,28 +7,17 @@ import (
 	"os"
 	"time"
 
-	"github.com/bcmi-labs/arduino-iot-cloud-data-pipeline/pkg/config"
 	"github.com/arduino/router/msgpackrpc"
 )
 
 func main() {
-	type Config struct {
-		LogLevel   slog.Level `default:"debug"`
-		RouterAddr string     `default:":8900"`
-	}
-	var cfg Config
-	err := config.New().WithParser(config.EnvParser()).Parse(&cfg)
+	routerAddr := ":8900"
+	s, err := net.Dial("tcp", routerAddr)
 	if err != nil {
-		slog.Error("Failed to parse config", "err", err)
+		slog.Error("Failed to connect to router", "addr", routerAddr, "err", err)
 		os.Exit(1)
 	}
-
-	s, err := net.Dial("tcp", cfg.RouterAddr)
-	if err != nil {
-		slog.Error("Failed to connect to router", "addr", cfg.RouterAddr, "err", err)
-		os.Exit(1)
-	}
-	slog.Info("Connected to router", "addr", cfg.RouterAddr)
+	slog.Info("Connected to router", "addr", routerAddr)
 	defer s.Close()
 
 	conn := msgpackrpc.NewConnection(s, s,
