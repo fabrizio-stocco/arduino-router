@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/hex"
+	"io"
 	"log/slog"
 	"net"
 
@@ -40,6 +42,28 @@ func main() {
 	}
 }
 
+type DebugStream struct {
+	upstream io.ReadWriteCloser
+}
+
+func (d *DebugStream) Read(p []byte) (n int, err error) {
+	n, err = d.upstream.Read(p)
+	slog.Debug("Read from stream", "data", hex.EncodeToString(p[:n]), "err", err)
+	return n, err
+}
+
+func (d *DebugStream) Write(p []byte) (n int, err error) {
+	n, err = d.upstream.Write(p)
+	slog.Debug("Write to stream", "data", hex.EncodeToString(p[:n]), "err", err)
+	return n, err
+}
+
+func (d *DebugStream) Close() error {
+	err := d.upstream.Close()
+	slog.Debug("Closed stream", "err", err)
+	return err
+}
+
 func startRouter(cfg Config) {
 	// Open listening socket
 	l, err := net.Listen("tcp", cfg.ListenAddr)
@@ -64,7 +88,8 @@ func startRouter(cfg Config) {
 			panic(err)
 		}
 		slog.Info("Opened serial connection", "serial", cfg.SerialPortAddr)
-		router.Accept(serialPort)
+		wr := &DebugStream{upstream: serialPort}
+		router.Accept(wr)
 	}
 
 	// Wait for incoming connections

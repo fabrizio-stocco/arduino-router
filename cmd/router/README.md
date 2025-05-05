@@ -52,10 +52,10 @@ After the method is registered another client may perform an RPC request to that
 
 | Client A <-> Router                                                              | Router <-> Client P                                                              |
 | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Client A does an RPC call to the Router<br>`[REQUEST, 51, "ping", [1, true]]` >> |                                                                                  |
-|                                                                                  | Router forwards the request to Client P<br>>> `[REQUEST, 32, "ping", [1, true]]` |
-|                                                                                  | Client P process the request and replies<br><< `[RESPONSE, 32, null, [1, true]]` |
-| The Router forwards back the response<br> `[RESPONSE, 51, null, [1, true]]` <<   |                                                                                  |
+| Client A does an RPC call to the Router<br>`[REQUEST, 32, "ping", [1, true]]` >> |                                                                                  |
+|                                                                                  | Router forwards the request to Client P<br>>> `[REQUEST, 51, "ping", [1, true]]` |
+|                                                                                  | Client P process the request and replies<br><< `[RESPONSE, 51, null, [1, true]]` |
+| The Router forwards back the response<br> `[RESPONSE, 32, null, [1, true]]` <<   |                                                                                  |
 
 Note that the request ID has been remapped by the Router: it keeps track of all active requests so the message IDs will not conflict between different clients.
 
@@ -65,8 +65,8 @@ A request to a non-registered method will result in an error:
 
 | Client A <-> Router                                                                                        |
 | ---------------------------------------------------------------------------------------------------------- |
-| Client A does an RPC call to the Router<br>`[REQUEST, 51, "xxxx", [1, true]]` >>                           |
-| The Router didn't know how to handle the request<br> `[RESPONSE, 51, "method xxxx not available", nil]` << |
+| Client A does an RPC call to the Router<br>`[REQUEST, 33, "xxxx", [1, true]]` >>                           |
+| The Router didn't know how to handle the request<br> `[RESPONSE, 33, "method xxxx not available", nil]` << |
 
 ## Unregistering methods (via `$/reset` method call)
 

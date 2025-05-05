@@ -33,6 +33,10 @@ func (r *Router) connectionLoop(conn io.ReadWriteCloser) {
 	msgpackconn = msgpackrpc.NewConnection(conn, conn,
 		func(ctx context.Context, _ msgpackrpc.FunctionLogger, method string, params []any) (_result any, _err any) {
 			// This handler is called when a request is received from the client
+			slog.Info("Received request", "method", method, "params", params)
+			defer func() {
+				slog.Info("Received response", "method", method, "result", _result, "error", _err)
+			}()
 
 			switch method {
 			case "$/register":
@@ -74,6 +78,7 @@ func (r *Router) connectionLoop(conn io.ReadWriteCloser) {
 		},
 		func(_ msgpackrpc.FunctionLogger, method string, params []any) {
 			// This handler is called when a notification is received from the client
+			slog.Info("Received notification", "method", method, "params", params)
 
 			// Check if the method is registered
 			client, ok := r.getConnectionForMethod(method)
