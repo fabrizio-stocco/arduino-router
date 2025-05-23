@@ -3,14 +3,17 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/arduino/router/msgpackrouter"
 
+	"github.com/arduino/go-paths-helper"
 	"github.com/spf13/cobra"
 	"go.bug.st/f"
 	"go.bug.st/serial"
@@ -19,7 +22,8 @@ import (
 // Server configuration
 type Config struct {
 	LogLevel       slog.Level
-	ListenAddr     string
+	ListenTCPAddr  string
+	ListenUnixAddr string
 	SerialPortAddr string
 }
 
@@ -35,11 +39,16 @@ func main() {
 			} else {
 				cfg.LogLevel = slog.LevelInfo
 			}
-			startRouter(cfg)
+			if err := startRouter(cfg); err != nil {
+				slog.Error("Failed to start router", "err", err)
+				os.Exit(1)
+			}
 		},
 	}
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
-	cmd.Flags().StringVarP(&cfg.ListenAddr, "listen-port", "l", ":8900", "Listening port for RPC services")
+	cmd.Flags().StringVarP(&cfg.ListenTCPAddr, "listen-port", "l", ":8900", "Listening port for RPC services")
+	defaultUnixAddr := paths.TempDir().Join("msgpack-router.sock").String()
+	cmd.Flags().StringVarP(&cfg.ListenUnixAddr, "unix-port", "u", defaultUnixAddr, "Listening port for RPC services")
 	cmd.Flags().StringVarP(&cfg.SerialPortAddr, "serial-port", "p", "", "Serial port address")
 	if err := cmd.Execute(); err != nil {
 		slog.Error("Error executing command.", "error", err)
@@ -68,14 +77,30 @@ func (d *DebugStream) Close() error {
 	return err
 }
 
-func startRouter(cfg Config) {
-	// Open listening socket
-	l, err := net.Listen("tcp", cfg.ListenAddr)
-	if err != nil {
-		panic(err)
+func startRouter(cfg Config) error {
+	var listeners []net.Listener
+
+	// Open listening TCP socket
+	if cfg.ListenTCPAddr != "" {
+		if l, err := net.Listen("tcp", cfg.ListenTCPAddr); err != nil {
+			return fmt.Errorf("failed to listen on TCP port %s: %w", cfg.ListenTCPAddr, err)
+		} else {
+			slog.Info("Listening on TCP socket", "listen_addr", cfg.ListenTCPAddr)
+			listeners = append(listeners, l)
+			defer l.Close()
+		}
 	}
-	slog.Info("Listening for TCP/IP services", "listen_addr", cfg.ListenAddr)
-	defer l.Close()
+
+	// Open listening UNIX socket
+	if cfg.ListenUnixAddr != "" {
+		if l, err := net.Listen("unix", cfg.ListenUnixAddr); err != nil {
+			return fmt.Errorf("failed to listen on UNIX socket %s: %w", cfg.ListenUnixAddr, err)
+		} else {
+			slog.Info("Listening on Unix socket", "listen_addr", cfg.ListenUnixAddr)
+			listeners = append(listeners, l)
+			defer l.Close()
+		}
+	}
 
 	// Run router
 	router := msgpackrouter.New()
@@ -169,15 +194,22 @@ func startRouter(cfg Config) {
 		}()
 	}
 
-	// Wait for incoming connections
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			slog.Error("Failed to accept connection", "err", err)
-			continue
-		}
+	// Wait for incoming connections on all listeners
+	for _, l := range listeners {
+		go func() {
+			for {
+				conn, err := l.Accept()
+				if err != nil {
+					slog.Error("Failed to accept connection", "err", err)
+					continue
+				}
 
-		slog.Info("Accepted connection", "addr", conn.RemoteAddr())
-		router.Accept(conn)
+				slog.Info("Accepted connection", "addr", conn.RemoteAddr())
+				router.Accept(conn)
+			}
+		}()
 	}
+
+	// Sleep forever
+	select {}
 }
