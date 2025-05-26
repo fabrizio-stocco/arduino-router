@@ -7,8 +7,9 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/arduino/go-paths-helper"
 	"github.com/arduino/router/msgpackrpc"
+
+	"github.com/arduino/go-paths-helper"
 )
 
 func main() {
@@ -46,7 +47,7 @@ func main() {
 	reqResult, reqError, err := conn.SendRequest(context.Background(), method, args)
 	if err != nil {
 		fmt.Println("Error sending request:", err)
-		os.Exit(1)
+		return
 	}
 	if reqError != nil {
 		fmt.Println("Error in response:", reqError)

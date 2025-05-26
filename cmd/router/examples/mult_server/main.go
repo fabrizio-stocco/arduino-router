@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"time"
 
 	"github.com/arduino/router/msgpackrpc"
 )
@@ -43,24 +42,20 @@ func main() {
 		nil,
 	)
 	defer conn.Close()
-	go func() {
-		conn.Run()
-		os.Exit(0)
-	}()
+	go conn.Run()
 
 	// Register the ping method
 	ctx := context.Background()
 	_, reqErr, err := conn.SendRequest(ctx, "$/register", []any{"mult"})
 	if err != nil {
-		panic(err)
+		slog.Error("Failed to send register request for ping method", "err", err)
+		return
 	}
 	if reqErr != nil {
 		slog.Error("Failed to register ping method", "err", reqErr)
-		os.Exit(1)
+		return
 	}
 
-	for {
-		// Run forever...
-		time.Sleep(time.Minute)
-	}
+	// Wait forever
+	select {}
 }
