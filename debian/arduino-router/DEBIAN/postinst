@@ -7,7 +7,3 @@ fi
 systemctl enable arduino-router
 systemctl enable arduino-router-serial
 
-if [ -d /run/systemd/system ]; then
-  systemctl start arduino-router
-  systemctl start arduino-router-serial
-fi
