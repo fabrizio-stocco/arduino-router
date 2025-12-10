@@ -56,9 +56,17 @@ func (r *Router) SetSendMaxWorkers(size int) {
 }
 
 func (r *Router) Accept(conn io.ReadWriteCloser) <-chan struct{} {
+	return r.accept(conn, false)
+}
+
+func (r *Router) AcceptAndSendNotification(conn io.ReadWriteCloser) <-chan struct{} {
+	return r.accept(conn, true)
+}
+
+func (r *Router) accept(conn io.ReadWriteCloser, sendStartNotification bool) <-chan struct{} {
 	res := make(chan struct{})
 	go func() {
-		r.connectionLoop(conn)
+		r.connectionLoop(conn, sendStartNotification)
 		close(res)
 	}()
 	return res
@@ -79,7 +87,7 @@ func (r *Router) RegisterMethod(method string, handler RouterRequestHandler) err
 	return nil
 }
 
-func (r *Router) connectionLoop(conn io.ReadWriteCloser) {
+func (r *Router) connectionLoop(conn io.ReadWriteCloser, sendStartNotification bool) {
 	defer conn.Close()
 
 	var msgpackconn *msgpackrpc.Connection
@@ -171,6 +179,14 @@ func (r *Router) connectionLoop(conn io.ReadWriteCloser) {
 		},
 		r.sendMaxWorkers,
 	)
+
+	if sendStartNotification {
+		// Send the start notification to the client
+		if err := msgpackconn.SendNotification("$/start"); err != nil {
+			slog.Error("Failed to send $/start notification", "err", err)
+			return
+		}
+	}
 
 	msgpackconn.Run()
 
