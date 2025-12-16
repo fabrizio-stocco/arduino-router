@@ -33,13 +33,26 @@ type Router struct {
 	routesLock     sync.Mutex
 	routes         map[string]*msgpackrpc.Connection
 	routesInternal map[string]RouterRequestHandler
+	sendMaxWorkers int
 }
 
-func New() *Router {
+func New(perConnMaxWorkers int) *Router {
 	return &Router{
 		routes:         make(map[string]*msgpackrpc.Connection),
 		routesInternal: make(map[string]RouterRequestHandler),
+		sendMaxWorkers: perConnMaxWorkers,
 	}
+}
+
+// SetSendMaxWorkers sets the maximum number of workers for sending on each connection,
+// this value limits the number of concurrent requests that can be sent on each connection.
+// A value of 0 means unlimited workers.
+// Only new connections will be affected by this change, existing connections
+// will keep their current sendMaxWorkers value.
+func (r *Router) SetSendMaxWorkers(size int) {
+	r.routesLock.Lock()
+	defer r.routesLock.Unlock()
+	r.sendMaxWorkers = size
 }
 
 func (r *Router) Accept(conn io.ReadWriteCloser) <-chan struct{} {
@@ -70,7 +83,7 @@ func (r *Router) connectionLoop(conn io.ReadWriteCloser) {
 	defer conn.Close()
 
 	var msgpackconn *msgpackrpc.Connection
-	msgpackconn = msgpackrpc.NewConnection(conn, conn,
+	msgpackconn = msgpackrpc.NewConnectionWithMaxWorkers(conn, conn,
 		func(ctx context.Context, _ msgpackrpc.FunctionLogger, method string, params []any) (_result any, _err any) {
 			// This handler is called when a request is received from the client
 			slog.Debug("Received request", "method", method, "params", params)
@@ -156,6 +169,7 @@ func (r *Router) connectionLoop(conn io.ReadWriteCloser) {
 			}
 			slog.Error("Error in connection", "err", err)
 		},
+		r.sendMaxWorkers,
 	)
 
 	msgpackconn.Run()
