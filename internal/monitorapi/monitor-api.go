@@ -16,7 +16,6 @@
 package monitorapi
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -86,44 +85,49 @@ func connectionHandler(listener net.Listener) {
 	}
 }
 
-func connected(ctx context.Context, rpc *msgpackrpc.Connection, params []any) (_result any, _err any) {
+func connected(rpc *msgpackrpc.Connection, params []any, res msgpackrouter.RouterResponseHandler) {
 	if len(params) != 0 {
-		return nil, []any{1, "Invalid number of parameters, expected no parameters"}
+		res(nil, []any{1, "Invalid number of parameters, expected no parameters"})
+		return
 	}
 
 	socketsLock.RLock()
 	connected := len(sockets) > 0
 	socketsLock.RUnlock()
 
-	return connected, nil
+	res(connected, nil)
 }
 
-func read(ctx context.Context, rpc *msgpackrpc.Connection, params []any) (_result any, _err any) {
+func read(rpc *msgpackrpc.Connection, params []any, res msgpackrouter.RouterResponseHandler) {
 	if len(params) != 1 {
-		return nil, []any{1, "Invalid number of parameters, expected max bytes to read"}
+		res(nil, []any{1, "Invalid number of parameters, expected max bytes to read"})
+		return
 	}
 	maxBytes, ok := msgpackrpc.ToUint(params[0])
 	if !ok {
-		return nil, []any{1, "Invalid parameter type, expected positive int for max bytes to read"}
+		res(nil, []any{1, "Invalid parameter type, expected positive int for max bytes to read"})
+		return
 	}
 
 	if bytesInSendPipe.Load() == 0 {
-		return []byte{}, nil
+		res([]byte{}, nil)
+		return
 	}
 
 	buffer := make([]byte, maxBytes)
 	if readed, err := monSendPipeRd.Read(buffer); err != nil {
 		slog.Error("Error reading monitor", "error", err)
-		return nil, []any{3, "Failed to read from connection: " + err.Error()}
+		res(nil, []any{3, "Failed to read from connection: " + err.Error()})
 	} else {
 		bytesInSendPipe.Add(int64(-readed))
-		return buffer[:readed], nil
+		res(buffer[:readed], nil)
 	}
 }
 
-func write(ctx context.Context, rpc *msgpackrpc.Connection, params []any) (_result any, _err any) {
+func write(rpc *msgpackrpc.Connection, params []any, res msgpackrouter.RouterResponseHandler) {
 	if len(params) != 1 {
-		return nil, []any{1, "Invalid number of parameters, expected data to write"}
+		res(nil, []any{1, "Invalid number of parameters, expected data to write"})
+		return
 	}
 	data, ok := params[0].([]byte)
 	if !ok {
@@ -131,7 +135,8 @@ func write(ctx context.Context, rpc *msgpackrpc.Connection, params []any) (_resu
 			data = []byte(dataStr)
 		} else {
 			// If data is not []byte or string, return an error
-			return nil, []any{1, "Invalid parameter type, expected []byte or string for data to write"}
+			res(nil, []any{1, "Invalid parameter type, expected []byte or string for data to write"})
+			return
 		}
 	}
 
@@ -157,7 +162,7 @@ func write(ctx context.Context, rpc *msgpackrpc.Connection, params []any) (_resu
 		}
 	}
 
-	return len(data), nil
+	res(len(data), nil)
 }
 
 func close(conn net.Conn) {
@@ -167,9 +172,10 @@ func close(conn net.Conn) {
 	_ = conn.Close()
 }
 
-func reset(ctx context.Context, rpc *msgpackrpc.Connection, params []any) (_result any, _err any) {
+func reset(rpc *msgpackrpc.Connection, params []any, res msgpackrouter.RouterResponseHandler) {
 	if len(params) != 0 {
-		return nil, []any{1, "Invalid number of parameters, expected no parameters"}
+		res(nil, []any{1, "Invalid number of parameters, expected no parameters"})
+		return
 	}
 
 	socketsLock.Lock()
@@ -182,5 +188,5 @@ func reset(ctx context.Context, rpc *msgpackrpc.Connection, params []any) (_resu
 	}
 
 	slog.Info("Monitor connection reset")
-	return true, nil
+	res(true, nil)
 }

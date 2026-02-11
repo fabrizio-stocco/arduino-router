@@ -16,12 +16,10 @@
 package msgpackrpc
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/djherbis/buffer"
 	"github.com/djherbis/nio/v3"
@@ -34,10 +32,6 @@ func TestRPCConnection(t *testing.T) {
 	testdataOut, out := nio.Pipe(buffer.New(1024))
 	d := msgpack.NewDecoder(testdataOut)
 	d.UseLooseInterfaceDecoding(true)
-	type CustomError struct {
-		Code    int
-		Message string
-	}
 
 	var wg sync.WaitGroup
 	notification := ""
@@ -45,24 +39,18 @@ func TestRPCConnection(t *testing.T) {
 	requestError := ""
 	conn := NewConnection(
 		in, out,
-		func(ctx context.Context, logger FunctionLogger, method string, params []any) (_result any, _err any) {
-			defer wg.Done()
-			request = fmt.Sprintf("REQ method=%v params=%v", method, params)
-			if method == "tocancel" {
-				select {
-				case <-ctx.Done():
-					request += " canceled"
-				case <-time.After(time.Second):
-					request += " not canceled"
-					t.Fail()
-				}
-				return nil, CustomError{Code: 1, Message: "error message"}
-			}
-			return []any{}, nil
+		func(logger FunctionLogger, method string, params []any, res ResponseHandler) {
+			go func() {
+				defer wg.Done()
+				request = fmt.Sprintf("REQ method=%v params=%v", method, params)
+				res([]any{}, nil)
+			}()
 		},
 		func(logger FunctionLogger, method string, params []any) {
-			defer wg.Done()
-			notification = fmt.Sprintf("NOT method=%v params=%v", method, params)
+			go func() {
+				defer wg.Done()
+				notification = fmt.Sprintf("NOT method=%v params=%v", method, params)
+			}()
 		},
 		func(e error) {
 			defer wg.Done()
@@ -82,9 +70,6 @@ func TestRPCConnection(t *testing.T) {
 	enc.UseCompactInts(true)
 	send := func(msg ...any) {
 		require.NoError(t, enc.Encode(msg))
-	}
-	sendCancel := func(id MessageID) {
-		send(messageTypeNotification, "$/cancelRequest", []any{id})
 	}
 
 	{ // Test incoming notification
@@ -114,18 +99,6 @@ func TestRPCConnection(t *testing.T) {
 		require.Equal(t, []any{int64(1), int64(2), nil, []any{}}, msg)
 	}
 
-	{ // Test incoming request cancelation
-		wg.Add(1)
-		send(messageTypeRequest, MessageID(3), "tocancel", []any{})
-		time.Sleep(time.Millisecond * 100)
-		sendCancel(3)
-		wg.Wait()
-		require.Equal(t, "REQ method=tocancel params=[] canceled", request)
-		msg, err := d.DecodeSlice()
-		require.NoError(t, err)
-		require.Equal(t, []any{int64(1), int64(3), map[string]any{"Code": int64(1), "Message": "error message"}, nil}, msg)
-	}
-
 	{ // Test outgoing request
 		wg.Add(1)
 		go func() {
@@ -148,58 +121,4 @@ func TestRPCConnection(t *testing.T) {
 		wg.Wait()
 		require.Equal(t, "error=invalid ID in request response '999': double answer or request not sent", requestError)
 	}
-}
-
-func TestRPCRougeDoubleCallWithSameID(t *testing.T) {
-	in, testdataIn := nio.Pipe(buffer.New(1024))
-	testdataOut, out := nio.Pipe(buffer.New(1024))
-
-	enc := msgpack.NewEncoder(testdataIn)
-	enc.UseCompactInts(true)
-	send := func(msg ...any) {
-		require.NoError(t, enc.Encode(msg))
-	}
-
-	d := msgpack.NewDecoder(testdataOut)
-	d.UseLooseInterfaceDecoding(true)
-	var reqLock sync.Mutex
-	request := ""
-	requestError := ""
-	var wg sync.WaitGroup
-	conn := NewConnection(
-		in, out,
-		func(ctx context.Context, logger FunctionLogger, method string, params []any) (_result any, _err any) {
-			defer wg.Done()
-			reqLock.Lock()
-			request += fmt.Sprintf("REQ method=%v params=%v\n", method, params)
-			reqLock.Unlock()
-			time.Sleep(500 * time.Millisecond) // Simulate a long request
-			return params[0], nil
-		},
-		nil,
-		func(e error) {
-			if e == io.EOF {
-				return
-			}
-			reqLock.Lock()
-			requestError = fmt.Sprintf("error=%s", e)
-			reqLock.Unlock()
-		},
-	)
-	go conn.Run()
-	t.Cleanup(conn.Close)
-
-	wg.Add(2)
-	send(messageTypeRequest, MessageID(1), "test", []any{1})
-	time.Sleep(100 * time.Millisecond)
-	send(messageTypeRequest, MessageID(1), "test", []any{2})
-	wg.Wait()
-	require.Equal(t, "REQ method=test params=[1]\nREQ method=test params=[2]\n", request)
-	require.Equal(t, "error=RPC protocol violation: request with ID 1 already active, canceling it", requestError)
-
-	time.Sleep(100 * time.Millisecond)
-	res, err := d.DecodeInterface()
-	require.NoError(t, err)
-	// Expect answer from the second request only
-	require.Equal(t, []any{int64(1), int64(1), nil, int64(2)}, res)
 }
